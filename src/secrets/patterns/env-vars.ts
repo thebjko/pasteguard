@@ -27,7 +27,7 @@ export const envVarsDetector: PatternDetector = {
     // Environment variable secret patterns: _SECRET suffix with value (8+ chars)
     // Case-insensitive for variable name, supports = and : assignment, quoted/unquoted values
     if (enabledTypes.has("ENV_SECRET")) {
-      const secretPattern = /[A-Za-z_][A-Za-z0-9_]*_SECRET\s*[=:]\s*['"]?[^\s'"]{8,}['"]?/gi;
+      const secretPattern = /[A-Za-z_][A-Za-z0-9_]*(?:_SECRET|_KEY)\s*[=:]\s*['"]?[^\s'"]{8,}['"]?/gi;
       detectPattern(text, secretPattern, "ENV_SECRET", matches, locations);
     }
 
