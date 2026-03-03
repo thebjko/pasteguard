@@ -1,0 +1,43 @@
+mode: mask
+
+server:
+  port: 3000
+  host: "0.0.0.0"
+
+providers:
+  openai:
+    base_url: http://host.docker.internal:11434/v1
+
+masking:
+  show_markers: false
+
+pii_detection:
+  presidio_url: http://localhost:5002
+  languages: ${PASTEGUARD_LANGUAGES:-en}
+  fallback_language: en
+  score_threshold: 0.7
+  entities:
+    - PERSON
+    - EMAIL_ADDRESS
+    - PHONE_NUMBER
+    - CREDIT_CARD
+    - IBAN_CODE
+    - IP_ADDRESS
+    - LOCATION
+
+secrets_detection:
+  enabled: true
+  action: mask
+  entities:
+    - OPENSSH_PRIVATE_KEY
+    - PEM_PRIVATE_KEY
+    - ENV_SECRET
+
+logging:
+  database: ./data/pasteguard.db
+  retention_days: 30
+  log_content: false
+  log_masked_content: true
+
+dashboard:
+  enabled: true
