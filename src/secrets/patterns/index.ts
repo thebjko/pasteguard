@@ -1,5 +1,7 @@
 import { apiKeysDetector } from "./api-keys";
 import { envVarsDetector } from "./env-vars";
+import { fieldValuesDetector } from "./field-values";
+import { koreanPiiDetector } from "./korean-pii";
 import { privateKeysDetector } from "./private-keys";
 import { tokensDetector } from "./tokens";
 import type { PatternDetector } from "./types";
@@ -15,6 +17,8 @@ export const patternDetectors: PatternDetector[] = [
   apiKeysDetector,
   tokensDetector,
   envVarsDetector,
+  koreanPiiDetector,
+  fieldValuesDetector,
 ];
 
 export type { PatternDetector, SecretEntityType, SecretsDetectionResult } from "./types";

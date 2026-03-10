@@ -1,0 +1,250 @@
+---
+title: 한국 PII & 필드명 기반 마스킹
+description: 주민등록번호·여권번호 등 한국 개인정보와 구조화된 데이터의 민감 필드값 마스킹
+---
+
+## 개요
+
+pasteguard의 기본 시크릿 탐지는 API 키, 개인키 등 영문 패턴 위주였다.
+두 가지 기능을 새로 추가했다.
+
+1. **한국 PII 패턴** — 주민번호·여권번호·운전면허·계좌번호를 정규식으로 직접 탐지
+2. **필드명 기반 마스킹** — YAML / TOML / JSON 구조에서 민감한 키 이름(`ssn`, `salary` 등)의 **값만** 자동 마스킹
+
+두 기능 모두 `secrets_detection` 아래에서 설정하고, 마스킹 방식은 기존과 동일하게 플레이스홀더로 치환 후 LLM 응답에서 복원된다.
+
+---
+
+## 한국 PII 패턴
+
+### config.yaml에서 활성화
+
+```yaml
+secrets_detection:
+  enabled: true
+  action: mask
+  entities:
+    # 기존 타입들 ...
+    - OPENSSH_PRIVATE_KEY
+    - PEM_PRIVATE_KEY
+    # 한국 PII 추가
+    - KOREAN_RRN               # 주민등록번호
+    - KOREAN_PASSPORT          # 여권번호
+    - KOREAN_DRIVERS_LICENSE   # 운전면허번호
+    - KOREAN_BANK_ACCOUNT      # 계좌번호
+```
+
+### 탐지 패턴
+
+| 타입 | 형식 | 예시 |
+|------|------|------|
+| `KOREAN_RRN` | `XXXXXX-[1-4]XXXXXX` | `920101-1234567` |
+| `KOREAN_PASSPORT` | 영문 1자 + 숫자 8자 | `M12345678` |
+| `KOREAN_DRIVERS_LICENSE` | `XX-XX-XXXXXX-XX` | `11-00-123456-78` |
+| `KOREAN_BANK_ACCOUNT` | 하이픈 구분 숫자 그룹 | `110-123-456789` |
+
+### 마스킹 결과
+
+```
+# 입력
+주민번호: 920101-1234567
+여권: M12345678
+
+# LLM에 전달되는 텍스트
+주민번호: [[KOREAN_RRN_1]]
+여권: [[KOREAN_PASSPORT_1]]
+
+# LLM 응답 후 원본 복원
+주민번호: 920101-1234567
+여권: M12345678
+```
+
+### 주의사항
+
+- **계좌번호(`KOREAN_BANK_ACCOUNT`)** 는 전화번호와 패턴이 비슷할 수 있다. Presidio의 `PHONE_NUMBER`와 함께 쓸 때 겹치는 경우 신뢰도가 높은 쪽이 우선된다.
+- **여권번호(`KOREAN_PASSPORT`)** 는 `영문1+숫자8` 형태라서 다른 코드 값과 충돌 가능성이 있다. 필요하면 `scan_roles`로 스캔 범위를 좁히는 것을 권장한다.
+
+---
+
+## 필드명 기반 마스킹
+
+### 어떻게 동작하나
+
+YAML, TOML, JSON, 일반 텍스트에서 `키: 값` 형태를 찾아 **값 부분만** 마스킹한다.
+키 이름은 보존되고 값만 플레이스홀더로 교체된다.
+
+```yaml
+# 입력 (YAML)
+users:
+  - name: Alice Kim
+    ssn: 920101-1234567
+    salary: 85000000
+    account_number: 110-123-456789
+
+# LLM에 전달되는 텍스트
+users:
+  - name: [[PERSON_1]]
+    ssn: [[FIELD_SENSITIVE_VALUE_1]]
+    salary: [[FIELD_SENSITIVE_VALUE_2]]
+    account_number: [[FIELD_SENSITIVE_VALUE_3]]
+```
+
+JSON, TOML도 동일하게 동작한다.
+
+```json
+// JSON
+{"ssn": "[[FIELD_SENSITIVE_VALUE_1]]", "salary": "[[FIELD_SENSITIVE_VALUE_2]]"}
+```
+
+```toml
+# TOML
+ssn = "[[FIELD_SENSITIVE_VALUE_1]]"
+salary = "[[FIELD_SENSITIVE_VALUE_2]]"
+```
+
+### config.yaml에서 활성화
+
+```yaml
+secrets_detection:
+  enabled: true
+  action: mask
+  entities:
+    - FIELD_SENSITIVE_VALUE  # 필드명 기반 마스킹 활성화
+```
+
+### 기본 민감 필드 목록
+
+아래 키 이름이 텍스트에 나타나면 자동으로 값이 마스킹된다.
+
+**인증/비밀**
+`password`, `passwd`, `pwd`, `passphrase`, `secret`, `private_key`, `access_key`
+
+**개인 식별**
+`ssn`, `social_security`, `national_id`, `resident_number`, `rrn`, `주민번호`, `주민등록번호`, `passport`, `passport_number`, `drivers_license`, `license_number`
+
+**금융**
+`account_number`, `account_no`, `bank_account`, `credit_card`, `card_number`, `salary`, `income`, `wage`, `compensation`, `tax_id`, `ein`
+
+**기타**
+`date_of_birth`, `dob`, `birth_date`, `birthday`, `mother_maiden_name`
+
+### 커스텀 필드 추가
+
+기본 목록 외에 추가로 마스킹할 필드명을 지정할 수 있다.
+
+```yaml
+secrets_detection:
+  entities:
+    - FIELD_SENSITIVE_VALUE
+  sensitive_fields:
+    - employee_id       # 사번
+    - 사번
+    - medical_record_id
+    - insurance_number
+    - 보험번호
+```
+
+> **config.ts 수정 필요**: `sensitive_fields` 옵션을 사용하려면 `SecretsDetectionSchema`에 `sensitive_fields: z.array(z.string()).optional()` 를 추가하고, `patternDetectors` 초기화 시 `createFieldValuesDetector(config.sensitive_fields)` 를 호출해야 한다. 자세한 내용은 아래 "config.ts 연동" 참고.
+
+---
+
+## 두 기능 함께 쓰기
+
+한국 PII 패턴과 필드명 기반 마스킹은 함께 쓸 때 시너지가 있다.
+같은 값을 두 탐지기가 동시에 잡으면 더 긴 스팬이 우선된다.
+
+```yaml
+secrets_detection:
+  enabled: true
+  action: mask
+  entities:
+    - OPENSSH_PRIVATE_KEY
+    - PEM_PRIVATE_KEY
+    - KOREAN_RRN
+    - KOREAN_PASSPORT
+    - KOREAN_DRIVERS_LICENSE
+    - KOREAN_BANK_ACCOUNT
+    - FIELD_SENSITIVE_VALUE
+  sensitive_fields:
+    - employee_id
+    - 사번
+```
+
+---
+
+## pandas 데이터를 LLM에 보낼 때
+
+CSV는 헤더와 값이 다른 행에 있어서 필드명 기반 탐지가 동작하지 않는다.
+**JSON으로 변환해서 보내는 것을 권장한다.**
+
+```python
+import pandas as pd
+import json
+
+df = pd.read_csv("employees.csv")
+
+# ✅ 이렇게 — JSON records 형태로 변환
+payload = df.to_json(orient="records", force_ascii=False)
+# → [{"name":"Alice","ssn":"920101-1234567","salary":85000000}, ...]
+# pasteguard가 ssn, salary 값을 자동 마스킹
+
+# ❌ 이렇게는 필드명 기반 마스킹 안 됨 (패턴 기반만 동작)
+payload = df.to_csv()
+```
+
+마스킹/복원 라운드트립 후에도 JSON 파싱이 정상 동작한다.
+
+```python
+# LLM 응답 후 원본 복원된 JSON → 다시 DataFrame으로
+df2 = pd.DataFrame(json.loads(restored_response))
+```
+
+---
+
+## config.ts 연동 가이드
+
+> 이 섹션은 `config.ts`를 직접 수정하는 개발자를 위한 내용이다.
+
+### 1. SecretEntityTypes 배열에 추가
+
+```typescript
+const SecretEntityTypes = [
+  // ... 기존 타입들 ...
+  "CONNECTION_STRING",
+  // 추가
+  "KOREAN_RRN",
+  "KOREAN_PASSPORT",
+  "KOREAN_DRIVERS_LICENSE",
+  "KOREAN_BANK_ACCOUNT",
+  "FIELD_SENSITIVE_VALUE",
+] as const;
+```
+
+### 2. SecretsDetectionSchema에 sensitive_fields 추가
+
+```typescript
+const SecretsDetectionSchema = z.object({
+  enabled: z.boolean().default(true),
+  action: z.enum(["block", "mask", "route_local"]).default("mask"),
+  entities: z.array(z.enum(SecretEntityTypes)).default(["OPENSSH_PRIVATE_KEY", "PEM_PRIVATE_KEY"]),
+  max_scan_chars: z.coerce.number().int().min(0).default(200000),
+  log_detected_types: z.boolean().default(true),
+  scan_roles: z.array(z.string()).optional(),
+  sensitive_fields: z.array(z.string()).optional(),  // 추가
+});
+```
+
+### 3. patternDetectors 초기화 시 config 전달
+
+`detect.ts`에서 정적으로 import된 `patternDetectors` 대신, config를 받아서 `createFieldValuesDetector`를 초기화하는 방식으로 변경한다.
+
+```typescript
+// detect.ts 상단에서
+import { createFieldValuesDetector } from "./patterns/field-values";
+
+// detectSecrets 함수 내부 또는 초기화 시점에
+const detectors = [
+  ...patternDetectors.filter(d => !d.patterns.includes("FIELD_SENSITIVE_VALUE")),
+  createFieldValuesDetector(config.sensitive_fields ?? []),
+];
+```
