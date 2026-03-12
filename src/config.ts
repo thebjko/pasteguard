@@ -104,6 +104,11 @@ const SecretEntityTypes = [
   "ENV_PASSWORD",
   "ENV_SECRET",
   "CONNECTION_STRING",
+  "KOREAN_RRN",
+  "KOREAN_PASSPORT",
+  "KOREAN_DRIVERS_LICENSE",
+  "KOREAN_BANK_ACCOUNT",
+  "FIELD_SENSITIVE_VALUE",
 ] as const;
 
 const SecretsDetectionSchema = z.object({

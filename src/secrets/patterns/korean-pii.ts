@@ -17,10 +17,12 @@ export const koreanPiiDetector: PatternDetector = {
     const matches: SecretsMatch[] = [];
     const locations: SecretLocation[] = [];
 
-    // 주민등록번호: 앞 6자리-뒤 7자리 (뒷자리 첫 번째는 1~4)
+    // 주민등록번호: 앞 6자리-뒤 7자리 또는 13자리 연속 숫자
     if (enabledTypes.has("KOREAN_RRN")) {
-      const rrnPattern = /\b\d{6}-[1-4]\d{6}\b/g;
-      detectPattern(text, rrnPattern, "KOREAN_RRN", matches, locations);
+      const rrnDashPattern = /\b\d{6}-\d{7}\b/g;
+      detectPattern(text, rrnDashPattern, "KOREAN_RRN", matches, locations);
+      const rrn13Pattern = /\b\d{13}\b/g;
+      detectPattern(text, rrn13Pattern, "KOREAN_RRN", matches, locations);
     }
 
     // 여권번호: 영문 1자리 + 숫자 8자리

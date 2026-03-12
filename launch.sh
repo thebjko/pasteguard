@@ -4,7 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="$SCRIPT_DIR/config.yaml"
 ZEROCLAW_CONFIG="$HOME/.zeroclaw/config.toml"
+ZSHRC="$HOME/.zshrc"
 PASTEGUARD_URL="http://localhost:3000"
+CLAUDE_MARKER="# pasteguard: ANTHROPIC_BASE_URL"
 
 is_running() {
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps --status running --quiet 2>/dev/null | grep -q .
@@ -51,6 +53,29 @@ restore_zeroclaw() {
   fi
 }
 
+patch_claude() {
+  [[ ! -f "$ZSHRC" ]] && return
+
+  if grep -q "$CLAUDE_MARKER" "$ZSHRC"; then
+    echo "Claude Code: 이미 PasteGuard로 설정되어 있음"
+    return
+  fi
+
+  echo "$CLAUDE_MARKER" >> "$ZSHRC"
+  echo "export ANTHROPIC_BASE_URL=$PASTEGUARD_URL/anthropic" >> "$ZSHRC"
+  echo "Claude Code: ANTHROPIC_BASE_URL → $PASTEGUARD_URL/anthropic"
+}
+
+restore_claude() {
+  [[ ! -f "$ZSHRC" ]] && return
+
+  if grep -q "$CLAUDE_MARKER" "$ZSHRC"; then
+    sed -i "/$CLAUDE_MARKER/d" "$ZSHRC"
+    sed -i "/export ANTHROPIC_BASE_URL=$PASTEGUARD_URL\/anthropic/d" "$ZSHRC"
+    echo "Claude Code: ANTHROPIC_BASE_URL 복원됨"
+  fi
+}
+
 start() {
   if is_running; then
     echo "PasteGuard 이미 실행 중 ($PASTEGUARD_URL)"
@@ -70,6 +95,7 @@ start() {
   if healthcheck; then
     echo "PasteGuard 실행됨 ($PASTEGUARD_URL)"
     patch_zeroclaw
+    patch_claude
   else
     echo "PasteGuard 시작 실패. 로그 확인: $0 logs"
     exit 1
@@ -78,6 +104,7 @@ start() {
 
 stop() {
   restore_zeroclaw
+  restore_claude
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" down
   echo "PasteGuard 종료됨"
 }

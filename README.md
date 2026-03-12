@@ -89,6 +89,64 @@ Route Mode sends requests containing sensitive data to a local LLM (Ollama, vLLM
 
 </details>
 
+## launch.sh로 실행하기
+
+`docker run` 대신 `launch.sh`를 쓰면 시작/종료 시 Claude Code 환경변수를 자동으로 설정/복원해준다.
+
+**시작:**
+
+```bash
+./launch.sh start
+```
+
+docker compose로 PasteGuard를 띄우고, `~/.zshrc`에 아래 줄을 자동으로 추가한다:
+
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:3000/anthropic
+```
+
+단, 스크립트는 자식 프로세스로 실행되기 때문에 현재 터미널에 바로 반영되지 않는다. 시작 후 한 번만 수동으로 적용해줘야 한다:
+
+```bash
+source ~/.zshrc
+```
+
+이후 새 터미널부터는 자동으로 적용된다.
+
+**종료:**
+
+```bash
+./launch.sh stop
+```
+
+docker compose를 내리고 `~/.zshrc`에서 해당 줄을 자동으로 삭제한다.
+
+**기타 명령:**
+
+```bash
+./launch.sh restart   # 재시작
+./launch.sh status    # 실행 상태 확인
+./launch.sh logs      # 로그 확인
+```
+
+### Zeroclaw와 함께 쓰기
+
+`launch.sh start`는 `~/.zeroclaw/config.toml`도 자동으로 패치한다:
+
+```toml
+# 변경 전
+default_provider = "anthropic"
+
+# 변경 후
+default_provider = "anthropic-custom:http://localhost:3000/anthropic"
+```
+
+Claude Code와 달리 설정 파일을 직접 수정하므로 `source` 없이 바로 적용된다.
+
+`launch.sh stop` 시 `default_provider = "anthropic"`으로 자동 복원된다.
+
+> **주의:** `~/.zeroclaw/config.toml`의 `default_provider`가 `"anthropic"`인 경우에만 자동 패치된다. 다른 값으로 설정되어 있으면 수동으로 변경해야 한다.
+
 ## Chat
 
 Open-source browser extension for ChatGPT, Claude, and Gemini.
