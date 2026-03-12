@@ -62,6 +62,9 @@ start() {
     cp "$SCRIPT_DIR/config.example.yaml" "$CONFIG_FILE"
   fi
 
+  mkdir -p "$SCRIPT_DIR/data"
+  chmod 777 "$SCRIPT_DIR/data"
+
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
 
   if healthcheck; then
