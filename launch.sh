@@ -88,7 +88,7 @@ start() {
   fi
 
   mkdir -p "$SCRIPT_DIR/data"
-  chmod 777 "$SCRIPT_DIR/data"
+  chmod 777 "$SCRIPT_DIR/data" 2>/dev/null || true
 
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
 
