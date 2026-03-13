@@ -118,6 +118,7 @@ const SecretsDetectionSchema = z.object({
   max_scan_chars: z.coerce.number().int().min(0).default(200000),
   log_detected_types: z.boolean().default(true),
   scan_roles: z.array(z.string()).optional(),
+  sensitive_fields: z.array(z.string()).default([]),
 });
 
 const ConfigSchema = z

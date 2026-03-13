@@ -1,5 +1,6 @@
 import type { SecretsDetectionConfig } from "../config";
 import type { RequestExtractor, TextSpan } from "../masking/types";
+import { createFieldValuesDetector } from "./patterns/field-values";
 import { patternDetectors } from "./patterns";
 import type {
   MessageSecretsResult,
@@ -41,11 +42,20 @@ export function detectSecrets(
   // Track which entities to detect based on config
   const enabledTypes = new Set(config.entities);
 
+  // Build detector list, replacing fieldValuesDetector with a custom one if extra fields are configured
+  const detectors =
+    (config.sensitive_fields?.length ?? 0) > 0
+      ? [
+          ...patternDetectors.filter((d) => !d.patterns.includes("FIELD_SENSITIVE_VALUE")),
+          createFieldValuesDetector(config.sensitive_fields),
+        ]
+      : patternDetectors;
+
   // Aggregate results from all pattern detectors
   const allMatches: SecretsMatch[] = [];
   const allLocations: SecretLocation[] = [];
 
-  for (const detector of patternDetectors) {
+  for (const detector of detectors) {
     // Skip detectors that don't handle any enabled types
     const hasEnabledPattern = detector.patterns.some((p) => enabledTypes.has(p));
     if (!hasEnabledPattern) continue;

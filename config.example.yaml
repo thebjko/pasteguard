@@ -149,6 +149,14 @@ secrets_detection:
   # The 200KB default covers typical use cases
   max_scan_chars: 200000
 
+  # Custom field names to mask values for (extends FIELD_SENSITIVE_VALUE detection)
+  # Requires FIELD_SENSITIVE_VALUE in entities above.
+  # Matches JSON/YAML/TOML key-value pairs: "my_field": "the-value"
+  # sensitive_fields:
+  #   - my_api_token
+  #   - internal_id
+  #   - employee_code
+
   # Log detected secret types (never logs secret content)
   # Even if logging.log_content is true, secret content is never logged
   log_detected_types: true
