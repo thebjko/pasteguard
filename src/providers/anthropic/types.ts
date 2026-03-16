@@ -65,13 +65,17 @@ export const ToolResultBlockSchema = z
   })
   .passthrough();
 
-export const ContentBlockSchema = z.discriminatedUnion("type", [
+// Catch-all for unknown block types (e.g. document, server_tool_use, future additions)
+const UnknownBlockSchema = z.object({ type: z.string() }).passthrough();
+
+export const ContentBlockSchema = z.union([
   TextBlockSchema,
   ImageBlockSchema,
   ToolUseBlockSchema,
   ToolResultBlockSchema,
   ThinkingBlockSchema,
   RedactedThinkingBlockSchema,
+  UnknownBlockSchema,
 ]);
 
 // Message and request types
