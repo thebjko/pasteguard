@@ -858,4 +858,139 @@ describe("Anthropic Text Extractor", () => {
       expect(block.cache_control).toEqual({ type: "ephemeral" });
     });
   });
+
+  describe("document block masking", () => {
+    test("extracts text from document source.data", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "text", data: "John Smith's SSN is 123-45-6789" },
+            } as any,
+          ],
+        },
+      ]);
+
+      const spans = anthropicExtractor.extractTexts(request);
+
+      expect(spans).toHaveLength(1);
+      expect(spans[0].text).toBe("John Smith's SSN is 123-45-6789");
+      expect(spans[0].nestedPartIndex).toBe(0);
+    });
+
+    test("extracts document title and context", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", data: "abc" },
+              title: "Report for John Smith",
+              context: "Contact at john@example.com",
+            } as any,
+          ],
+        },
+      ]);
+
+      const spans = anthropicExtractor.extractTexts(request);
+
+      expect(spans).toHaveLength(2);
+      expect(spans[0].text).toBe("Report for John Smith");
+      expect(spans[0].nestedPartIndex).toBe(1);
+      expect(spans[1].text).toBe("Contact at john@example.com");
+      expect(spans[1].nestedPartIndex).toBe(2);
+    });
+
+    test("skips document with non-text source", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", data: "abc123" },
+            } as any,
+          ],
+        },
+      ]);
+
+      const spans = anthropicExtractor.extractTexts(request);
+
+      expect(spans).toHaveLength(0);
+    });
+
+    test("applies masked text to document source.data", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "text", data: "Call me at 010-1234-5678" },
+              title: "My doc",
+            } as any,
+          ],
+        },
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content[0].source.data",
+          maskedText: "Call me at [[KOREAN_PHONE_1]]",
+          messageIndex: 0,
+          partIndex: 0,
+          nestedPartIndex: 0,
+        },
+      ];
+
+      const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      const block = (result.messages[0].content as any[])[0];
+
+      expect(block.source.data).toBe("Call me at [[KOREAN_PHONE_1]]");
+      expect(block.title).toBe("My doc"); // unchanged
+    });
+
+    test("applies masked text to document title and context", () => {
+      const request = createRequest([
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", data: "abc" },
+              title: "File for John",
+              context: "From john@example.com",
+            } as any,
+          ],
+        },
+      ]);
+
+      const maskedSpans = [
+        {
+          path: "messages[0].content[0].title",
+          maskedText: "File for [[PERSON_1]]",
+          messageIndex: 0,
+          partIndex: 0,
+          nestedPartIndex: 1,
+        },
+        {
+          path: "messages[0].content[0].context",
+          maskedText: "From [[EMAIL_ADDRESS_1]]",
+          messageIndex: 0,
+          partIndex: 0,
+          nestedPartIndex: 2,
+        },
+      ];
+
+      const result = anthropicExtractor.applyMasked(request, maskedSpans);
+      const block = (result.messages[0].content as any[])[0];
+
+      expect(block.title).toBe("File for [[PERSON_1]]");
+      expect(block.context).toBe("From [[EMAIL_ADDRESS_1]]");
+      expect(block.source.data).toBe("abc"); // unchanged
+    });
+  });
 });

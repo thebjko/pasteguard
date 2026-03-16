@@ -65,7 +65,23 @@ export const ToolResultBlockSchema = z
   })
   .passthrough();
 
-// Catch-all for unknown block types (e.g. document, server_tool_use, future additions)
+export const DocumentBlockSchema = z
+  .object({
+    type: z.literal("document"),
+    source: z.union([
+      z.object({ type: z.literal("text"), data: z.string() }).passthrough(),
+      z.object({ type: z.literal("base64"), data: z.string() }).passthrough(),
+      z.object({ type: z.literal("url"), url: z.string() }).passthrough(),
+      z
+        .object({ type: z.literal("content"), content: z.union([z.string(), z.array(z.any())]) })
+        .passthrough(),
+    ]),
+    title: z.string().optional(),
+    context: z.string().optional(),
+  })
+  .passthrough();
+
+// Catch-all for unknown block types (e.g. server_tool_use, future additions)
 const UnknownBlockSchema = z.object({ type: z.string() }).passthrough();
 
 export const ContentBlockSchema = z.union([
@@ -75,6 +91,7 @@ export const ContentBlockSchema = z.union([
   ToolResultBlockSchema,
   ThinkingBlockSchema,
   RedactedThinkingBlockSchema,
+  DocumentBlockSchema,
   UnknownBlockSchema,
 ]);
 
@@ -158,6 +175,7 @@ export type ToolUseBlock = z.infer<typeof ToolUseBlockSchema>;
 export type ToolResultBlock = z.infer<typeof ToolResultBlockSchema>;
 export type ThinkingBlock = z.infer<typeof ThinkingBlockSchema>;
 export type RedactedThinkingBlock = z.infer<typeof RedactedThinkingBlockSchema>;
+export type DocumentBlock = z.infer<typeof DocumentBlockSchema>;
 export type ContentBlock = z.infer<typeof ContentBlockSchema>;
 export type AnthropicMessage = z.infer<typeof AnthropicMessageSchema>;
 export type Tool = z.infer<typeof ToolSchema>;

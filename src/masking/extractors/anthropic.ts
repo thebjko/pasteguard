@@ -15,6 +15,7 @@ import type {
   AnthropicRequest,
   AnthropicResponse,
   ContentBlock,
+  DocumentBlock,
   TextBlock,
   ThinkingBlock,
   ToolResultBlock,
@@ -183,6 +184,38 @@ export const anthropicExtractor: RequestExtractor<AnthropicRequest, AnthropicRes
                 }
               }
             }
+          } else if (block.type === "document") {
+            const doc = block as DocumentBlock;
+            if (doc.source.type === "text" && doc.source.data) {
+              spans.push({
+                text: doc.source.data,
+                path: `messages[${msgIdx}].content[${partIdx}].source.data`,
+                messageIndex: msgIdx,
+                partIndex: partIdx,
+                nestedPartIndex: 0,
+                role: msg.role,
+              });
+            }
+            if (doc.title) {
+              spans.push({
+                text: doc.title,
+                path: `messages[${msgIdx}].content[${partIdx}].title`,
+                messageIndex: msgIdx,
+                partIndex: partIdx,
+                nestedPartIndex: 1,
+                role: msg.role,
+              });
+            }
+            if (doc.context) {
+              spans.push({
+                text: doc.context,
+                path: `messages[${msgIdx}].content[${partIdx}].context`,
+                messageIndex: msgIdx,
+                partIndex: partIdx,
+                nestedPartIndex: 2,
+                role: msg.role,
+              });
+            }
           }
         }
       }
@@ -262,6 +295,19 @@ export const anthropicExtractor: RequestExtractor<AnthropicRequest, AnthropicRes
               });
               return { ...block, content: maskedNestedContent };
             }
+          }
+          if (block.type === "document") {
+            const doc = block as DocumentBlock;
+            const sourceSpan = partSpans.find((s) => s.nestedPartIndex === 0);
+            const titleSpan = partSpans.find((s) => s.nestedPartIndex === 1);
+            const contextSpan = partSpans.find((s) => s.nestedPartIndex === 2);
+            let updated = { ...doc };
+            if (sourceSpan && doc.source.type === "text") {
+              updated = { ...updated, source: { ...doc.source, data: sourceSpan.maskedText } };
+            }
+            if (titleSpan) updated = { ...updated, title: titleSpan.maskedText };
+            if (contextSpan) updated = { ...updated, context: contextSpan.maskedText };
+            return updated;
           }
           return block;
         });
