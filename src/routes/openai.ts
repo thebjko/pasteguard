@@ -68,6 +68,9 @@ openaiRoutes.post(
     let request = c.req.valid("json") as OpenAIRequest;
     const config = getConfig();
 
+    // Capture original content before any masking
+    const originalContent = formatMessagesForLog(request.messages);
+
     // Step 1: Process secrets
     const secretsResult = processSecretsRequest(request, config.secrets_detection, openaiExtractor);
 
@@ -111,6 +114,7 @@ openaiRoutes.post(
         piiResult,
         piiMaskingContext: piiMasked.maskingContext,
         secretsResult,
+        originalContent,
         startTime,
         authHeader: c.req.header("Authorization"),
       });
@@ -126,6 +130,7 @@ openaiRoutes.post(
         request,
         piiResult,
         secretsResult,
+        originalContent,
         startTime,
       });
     }
@@ -134,6 +139,7 @@ openaiRoutes.post(
       request,
       piiResult,
       secretsResult,
+      originalContent,
       startTime,
       authHeader: c.req.header("Authorization"),
     });
@@ -166,6 +172,7 @@ interface OpenAIOptions {
   piiResult: PIIDetectResult;
   piiMaskingContext?: PlaceholderContext;
   secretsResult: SecretsProcessResult<OpenAIRequest>;
+  originalContent: string;
   startTime: number;
   authHeader?: string;
 }
@@ -174,6 +181,7 @@ interface LocalOptions {
   request: OpenAIRequest;
   piiResult: PIIDetectResult;
   secretsResult: SecretsProcessResult<OpenAIRequest>;
+  originalContent: string;
   startTime: number;
 }
 
@@ -249,7 +257,7 @@ function respondDetectionError(c: Context, body: OpenAIRequest, startTime: numbe
 
 async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: OpenAIOptions) {
   const config = getConfig();
-  const { request, piiResult, piiMaskingContext, secretsResult, startTime, authHeader } = opts;
+  const { request, piiResult, piiMaskingContext, secretsResult, originalContent, startTime, authHeader } = opts;
 
   const maskedContent =
     piiResult.hasPII || secretsResult.masked ? formatMessagesForLog(request.messages) : undefined;
@@ -272,6 +280,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
       }),
       c.req.header("User-Agent") || null,
@@ -304,6 +313,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
       },
@@ -314,7 +324,7 @@ async function sendToOpenAI(c: Context, originalRequest: OpenAIRequest, opts: Op
 
 async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: LocalOptions) {
   const config = getConfig();
-  const { request, piiResult, secretsResult, startTime } = opts;
+  const { request, piiResult, secretsResult, originalContent, startTime } = opts;
 
   if (!config.local) {
     throw new Error("Local provider not configured");
@@ -341,6 +351,7 @@ async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: Loc
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
       }),
       c.req.header("User-Agent") || null,
@@ -364,6 +375,7 @@ async function sendToLocal(c: Context, originalRequest: OpenAIRequest, opts: Loc
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
       },

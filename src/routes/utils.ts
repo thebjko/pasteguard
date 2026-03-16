@@ -212,6 +212,7 @@ export interface CreateLogDataOptions {
   startTime: number;
   pii?: PIILogData;
   secrets?: SecretsLogData;
+  originalContent?: string;
   maskedContent?: string;
   statusCode?: number;
   errorMessage?: string;
@@ -222,8 +223,17 @@ export interface CreateLogDataOptions {
  */
 export function createLogData(options: CreateLogDataOptions): RequestLogData {
   const config = getConfig();
-  const { provider, model, startTime, pii, secrets, maskedContent, statusCode, errorMessage } =
-    options;
+  const {
+    provider,
+    model,
+    startTime,
+    pii,
+    secrets,
+    originalContent,
+    maskedContent,
+    statusCode,
+    errorMessage,
+  } = options;
 
   return {
     timestamp: new Date().toISOString(),
@@ -237,6 +247,7 @@ export function createLogData(options: CreateLogDataOptions): RequestLogData {
     language: pii?.language ?? config.pii_detection.fallback_language,
     languageFallback: pii?.languageFallback ?? false,
     detectedLanguage: pii?.detectedLanguage,
+    originalContent,
     maskedContent,
     secretsDetected: secrets?.detected,
     secretsTypes: secrets?.types,
@@ -255,6 +266,7 @@ export interface ProviderErrorContext {
   startTime: number;
   pii?: PIILogData;
   secrets?: SecretsLogData;
+  originalContent?: string;
   maskedContent?: string;
   userAgent: string | null;
 }
@@ -282,6 +294,7 @@ export function handleProviderError(
         startTime: ctx.startTime,
         pii: ctx.pii,
         secrets: ctx.secrets,
+        originalContent: ctx.originalContent,
         maskedContent: ctx.maskedContent,
         statusCode: error.status,
         errorMessage: error.errorMessage,
@@ -305,6 +318,7 @@ export function handleProviderError(
       startTime: ctx.startTime,
       pii: ctx.pii,
       secrets: ctx.secrets,
+      originalContent: ctx.originalContent,
       maskedContent: ctx.maskedContent,
       statusCode: 502,
       errorMessage,

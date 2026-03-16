@@ -67,6 +67,9 @@ anthropicRoutes.post(
     let request = c.req.valid("json") as AnthropicRequest;
     const config = getConfig();
 
+    // Capture original content before any masking
+    const originalContent = formatRequestForLog(request);
+
     // Route mode requires local provider
     if (config.mode === "route" && !config.local) {
       return respondError(c, "Route mode requires local provider configuration.", 400);
@@ -145,6 +148,7 @@ anthropicRoutes.post(
         startTime,
         piiResult,
         secretsResult,
+        originalContent,
       });
     }
 
@@ -167,6 +171,7 @@ anthropicRoutes.post(
       piiResult,
       piiMaskingContext,
       secretsResult,
+      originalContent,
       maskedContent,
     });
   },
@@ -210,6 +215,7 @@ interface SendOptions {
   piiResult: PIIDetectResult;
   piiMaskingContext?: PlaceholderContext;
   secretsResult: SecretsProcessResult<AnthropicRequest>;
+  originalContent: string;
   maskedContent?: string;
 }
 
@@ -218,6 +224,7 @@ interface LocalOptions {
   startTime: number;
   piiResult: PIIDetectResult;
   secretsResult: SecretsProcessResult<AnthropicRequest>;
+  originalContent: string;
 }
 
 // --- Helpers ---
@@ -304,7 +311,7 @@ function respondDetectionError(
 
 async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: LocalOptions) {
   const config = getConfig();
-  const { request, piiResult, secretsResult, startTime } = opts;
+  const { request, piiResult, secretsResult, originalContent, startTime } = opts;
 
   if (!config.local) {
     throw new Error("Local provider not configured");
@@ -331,6 +338,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
       }),
       c.req.header("User-Agent") || null,
@@ -354,6 +362,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
       },
@@ -364,7 +373,7 @@ async function sendToLocal(c: Context, originalRequest: AnthropicRequest, opts: 
 
 async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: SendOptions) {
   const config = getConfig();
-  const { startTime, piiResult, piiMaskingContext, secretsResult, maskedContent } = opts;
+  const { startTime, piiResult, piiMaskingContext, secretsResult, originalContent, maskedContent } = opts;
 
   setResponseHeaders(
     c,
@@ -390,6 +399,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
       }),
       c.req.header("User-Agent") || null,
@@ -410,6 +420,7 @@ async function sendToAnthropic(c: Context, request: AnthropicRequest, opts: Send
         startTime,
         pii: toPIILogData(piiResult),
         secrets: toSecretsLogData(secretsResult),
+        originalContent: maskedContent ? originalContent : undefined,
         maskedContent,
         userAgent: c.req.header("User-Agent") || null,
       },

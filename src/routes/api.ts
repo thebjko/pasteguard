@@ -100,6 +100,7 @@ apiRoutes.post("/mask", async (c) => {
   }
 
   const request: MaskRequest = parseResult.data;
+  const originalContent = request.text;
   const detectTypes = request.detect || ["pii", "secrets"];
   const detectPII = detectTypes.includes("pii");
   const detectSecretsFlag = detectTypes.includes("secrets");
@@ -262,7 +263,8 @@ apiRoutes.post("/mask", async (c) => {
       },
       secrets:
         secretTypes.length > 0 ? { detected: true, types: secretTypes, masked: true } : undefined,
-      maskedContent: config.logging.log_masked_content ? maskedText : undefined,
+      originalContent,
+      maskedContent: maskedText,
       statusCode: 200,
     }),
     userAgent,

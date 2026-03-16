@@ -18,6 +18,7 @@ export interface RequestLog {
   language: string;
   language_fallback: boolean;
   detected_language: string | null;
+  original_content: string | null;
   masked_content: string | null;
   secrets_detected: number | null;
   secrets_types: string | null;
@@ -80,6 +81,7 @@ export class Logger {
         language TEXT NOT NULL DEFAULT 'en',
         language_fallback INTEGER NOT NULL DEFAULT 0,
         detected_language TEXT,
+        original_content TEXT,
         masked_content TEXT,
         secrets_detected INTEGER,
         secrets_types TEXT,
@@ -99,6 +101,9 @@ export class Logger {
       this.db.run("ALTER TABLE request_logs ADD COLUMN status_code INTEGER");
       this.db.run("ALTER TABLE request_logs ADD COLUMN error_message TEXT");
     }
+    if (!columns.find((c) => c.name === "original_content")) {
+      this.db.run("ALTER TABLE request_logs ADD COLUMN original_content TEXT");
+    }
 
     // Create indexes for performance
     this.db.run(`
@@ -115,9 +120,9 @@ export class Logger {
   log(entry: Omit<RequestLog, "id">): void {
     const stmt = this.db.prepare(`
       INSERT INTO request_logs
-        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, masked_content, secrets_detected, secrets_types, status_code, error_message)
+        (timestamp, mode, provider, model, pii_detected, entities, latency_ms, scan_time_ms, prompt_tokens, completion_tokens, user_agent, language, language_fallback, detected_language, original_content, masked_content, secrets_detected, secrets_types, status_code, error_message)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -135,6 +140,7 @@ export class Logger {
       entry.language,
       entry.language_fallback ? 1 : 0,
       entry.detected_language,
+      entry.original_content,
       entry.masked_content,
       entry.secrets_detected ?? null,
       entry.secrets_types ?? null,
@@ -300,6 +306,7 @@ export interface RequestLogData {
   language: string;
   languageFallback: boolean;
   detectedLanguage?: string;
+  originalContent?: string;
   maskedContent?: string;
   secretsDetected?: boolean;
   secretsTypes?: string[];
@@ -313,8 +320,9 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
     const logger = getLogger();
 
     // Safety: Never log content if secrets were detected
-    // Even if log_content is true, secrets are never logged
-    const shouldLogContent = data.maskedContent && !data.secretsDetected;
+    const noSecrets = !data.secretsDetected;
+    const shouldLogOriginal = config.logging.log_content && noSecrets && data.originalContent;
+    const shouldLogMasked = config.logging.log_masked_content && noSecrets && data.maskedContent;
 
     // Only log secret types if configured to do so
     const shouldLogSecretTypes =
@@ -335,7 +343,8 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
       language: data.language,
       language_fallback: data.languageFallback,
       detected_language: data.detectedLanguage ?? null,
-      masked_content: shouldLogContent ? (data.maskedContent ?? null) : null,
+      original_content: shouldLogOriginal ? (data.originalContent ?? null) : null,
+      masked_content: shouldLogMasked ? (data.maskedContent ?? null) : null,
       secrets_detected: data.secretsDetected !== undefined ? (data.secretsDetected ? 1 : 0) : null,
       secrets_types: shouldLogSecretTypes ? data.secretsTypes!.join(",") : null,
       status_code: data.statusCode ?? null,
