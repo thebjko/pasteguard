@@ -319,10 +319,8 @@ export function logRequest(data: RequestLogData, userAgent: string | null): void
     const config = getConfig();
     const logger = getLogger();
 
-    // Safety: Never log content if secrets were detected
-    const noSecrets = !data.secretsDetected;
-    const shouldLogOriginal = config.logging.log_content && noSecrets && data.originalContent;
-    const shouldLogMasked = config.logging.log_masked_content && noSecrets && data.maskedContent;
+    const shouldLogOriginal = config.logging.log_content && data.originalContent;
+    const shouldLogMasked = config.logging.log_masked_content && data.maskedContent;
 
     // Only log secret types if configured to do so
     const shouldLogSecretTypes =

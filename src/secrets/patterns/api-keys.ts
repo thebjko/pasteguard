@@ -10,7 +10,7 @@ import { detectPattern } from "./utils";
  * - API_KEY_GITHUB: GitHub tokens (ghp_, gho_, ghu_, ghs_, ghr_)
  */
 export const apiKeysDetector: PatternDetector = {
-  patterns: ["API_KEY_SK", "API_KEY_AWS", "API_KEY_GITHUB"],
+  patterns: ["API_KEY_SK", "API_KEY_AWS", "API_KEY_GITHUB", "ANTHROPIC_API_KEY"],
 
   detect(text: string, enabledTypes: Set<string>) {
     const matches: SecretsMatch[] = [];
@@ -36,6 +36,12 @@ export const apiKeysDetector: PatternDetector = {
     if (enabledTypes.has("API_KEY_GITHUB")) {
       const githubPattern = /gh[pousr]_[a-zA-Z0-9]{36,}/g;
       detectPattern(text, githubPattern, "API_KEY_GITHUB", matches, locations);
+    }
+
+    // Anthropic API keys: sk-ant- prefix, total ~108 chars
+    if (enabledTypes.has("ANTHROPIC_API_KEY")) {
+      const anthropicPattern = /sk-ant-[a-zA-Z0-9_-]{95,}/g;
+      detectPattern(text, anthropicPattern, "ANTHROPIC_API_KEY", matches, locations);
     }
 
     return {

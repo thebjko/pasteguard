@@ -105,6 +105,8 @@ const SecretEntityTypes = [
   "ENV_SECRET",
   "CONNECTION_STRING",
   "KOREAN_RRN",
+  "KOREAN_PHONE",
+  "ANTHROPIC_API_KEY",
 ] as const;
 
 const SecretsDetectionSchema = z.object({

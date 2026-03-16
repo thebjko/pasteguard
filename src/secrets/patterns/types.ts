@@ -12,7 +12,9 @@ export type SecretEntityType =
   | "ENV_PASSWORD"
   | "ENV_SECRET"
   | "CONNECTION_STRING"
-  | "KOREAN_RRN";
+  | "KOREAN_RRN"
+  | "KOREAN_PHONE"
+  | "ANTHROPIC_API_KEY";
 
 export interface SecretsMatch {
   type: SecretEntityType;
