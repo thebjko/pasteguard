@@ -332,10 +332,10 @@ describe("createAnthropicUnmaskingStream", () => {
     expect(result).toContain("Plain text without placeholders");
   });
 
-  test("flushes buffer on content_block_stop to prevent cross-block contamination", async () => {
+  test("separate buffers prevent cross-block contamination", async () => {
     // Bug scenario: placeholder split across content_block_stop boundary
     // text_delta "...[[KOREAN_" → content_block_stop → input_json_delta "PHONE_1]]..."
-    // Without the fix, "[[KOREAN_" would remain in piiBuffer and corrupt the tool input
+    // With separate buffers, text and json buffers never mix
     const piiContext = createMaskingContext();
     piiContext.mapping["[[KOREAN_PHONE_1]]"] = "010-2345-6543";
 
@@ -353,7 +353,7 @@ describe("createAnthropicUnmaskingStream", () => {
     const toolInputDelta = createAnthropicEvent("content_block_delta", {
       type: "content_block_delta",
       index: 1,
-      delta: { type: "input_json_delta", partial_json: 'PHONE_1]]","other":"val"}' },
+      delta: { type: "input_json_delta", partial_json: '{"phone":"PHONE_1]]"}' },
     });
 
     const source = createSSEStream([textBlockDelta, contentBlockStop, toolInputDelta]);
@@ -365,15 +365,11 @@ describe("createAnthropicUnmaskingStream", () => {
     );
     const result = await consumeStream(unmaskedStream);
 
-    // Buffer should be flushed at content_block_stop.
-    // The partial placeholder "[[KOREAN_" is emitted as-is (can't unmask incomplete placeholder).
-    expect(result).toContain('"[[KOREAN_"');
-    // Tool input (input_json_delta) should NOT contain the leftover buffer fragment.
-    // Without the fix, "[[KOREAN_" + "PHONE_1]]" would reassemble and unmask in the tool input.
+    // Tool input should NOT contain "010-2345-6543" — json buffer starts fresh
     const lines = result.split("\n");
     const toolInputLine = lines.find((l) => l.includes("input_json_delta"));
     expect(toolInputLine).toBeDefined();
-    expect(toolInputLine).not.toContain("[[KOREAN_");
+    expect(toolInputLine).not.toContain("010-2345-6543");
   });
 
   test("handles multiple consecutive text deltas", async () => {

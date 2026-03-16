@@ -25,8 +25,11 @@ export function createAnthropicUnmaskingStream(
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let piiBuffer = "";
-  let secretsBuffer = "";
+  // Separate buffers per delta type to prevent cross-block contamination
+  let textPiiBuffer = "";
+  let textSecretsBuffer = "";
+  let jsonPiiBuffer = "";
+  let jsonSecretsBuffer = "";
   let lineBuffer = "";
 
   return new ReadableStream({
@@ -38,19 +41,19 @@ export function createAnthropicUnmaskingStream(
           const { done, value } = await reader.read();
 
           if (done) {
-            // Flush remaining buffers
+            // Flush remaining text buffers
             let flushed = "";
 
-            if (piiBuffer && piiContext) {
-              flushed = flushMaskingBuffer(piiBuffer, piiContext, config);
-            } else if (piiBuffer) {
-              flushed = piiBuffer;
+            if (textPiiBuffer && piiContext) {
+              flushed = flushMaskingBuffer(textPiiBuffer, piiContext, config);
+            } else if (textPiiBuffer) {
+              flushed = textPiiBuffer;
             }
 
-            if (secretsBuffer && secretsContext) {
-              flushed += flushSecretsMaskingBuffer(secretsBuffer, secretsContext);
-            } else if (secretsBuffer) {
-              flushed += secretsBuffer;
+            if (textSecretsBuffer && secretsContext) {
+              flushed += flushSecretsMaskingBuffer(textSecretsBuffer, secretsContext);
+            } else if (textSecretsBuffer) {
+              flushed += textSecretsBuffer;
             }
 
             // Send flushed content as final text delta
@@ -99,23 +102,23 @@ export function createAnthropicUnmaskingStream(
                     // Unmask PII
                     if (piiContext && processedText) {
                       const { output, remainingBuffer } = unmaskStreamChunk(
-                        piiBuffer,
+                        textPiiBuffer,
                         processedText,
                         piiContext,
                         config,
                       );
-                      piiBuffer = remainingBuffer;
+                      textPiiBuffer = remainingBuffer;
                       processedText = output;
                     }
 
                     // Unmask secrets
                     if (secretsContext && processedText) {
                       const { output, remainingBuffer } = unmaskSecretsStreamChunk(
-                        secretsBuffer,
+                        textSecretsBuffer,
                         processedText,
                         secretsContext,
                       );
-                      secretsBuffer = remainingBuffer;
+                      textSecretsBuffer = remainingBuffer;
                       processedText = output;
                     }
 
@@ -136,21 +139,21 @@ export function createAnthropicUnmaskingStream(
 
                     if (secretsContext && partialJson) {
                       const { output, remainingBuffer } = unmaskSecretsStreamChunk(
-                        secretsBuffer,
+                        jsonSecretsBuffer,
                         partialJson,
                         secretsContext,
                       );
-                      secretsBuffer = remainingBuffer;
+                      jsonSecretsBuffer = remainingBuffer;
                       partialJson = output;
                     }
                     if (piiContext && partialJson) {
                       const { output, remainingBuffer } = unmaskStreamChunk(
-                        piiBuffer,
+                        jsonPiiBuffer,
                         partialJson,
                         piiContext,
                         config,
                       );
-                      piiBuffer = remainingBuffer;
+                      jsonPiiBuffer = remainingBuffer;
                       partialJson = output;
                     }
 
@@ -164,33 +167,6 @@ export function createAnthropicUnmaskingStream(
                     controller.enqueue(encoder.encode(`data: ${data}\n`));
                   }
                 } else {
-                  // On content_block_stop, flush and reset buffers to prevent
-                  // cross-block contamination (e.g. text_delta buffer leaking into input_json_delta)
-                  if (parsed.type === "content_block_stop") {
-                    let flushed = "";
-                    if (piiBuffer) {
-                      flushed += piiContext
-                        ? flushMaskingBuffer(piiBuffer, piiContext, config)
-                        : piiBuffer;
-                      piiBuffer = "";
-                    }
-                    if (secretsBuffer) {
-                      flushed += secretsContext
-                        ? flushSecretsMaskingBuffer(secretsBuffer, secretsContext)
-                        : secretsBuffer;
-                      secretsBuffer = "";
-                    }
-                    if (flushed) {
-                      const flushEvent = {
-                        type: "content_block_delta",
-                        index: (parsed as { index?: number }).index ?? 0,
-                        delta: { type: "text_delta", text: flushed },
-                      };
-                      controller.enqueue(
-                        encoder.encode(`data: ${JSON.stringify(flushEvent)}\n`),
-                      );
-                    }
-                  }
                   // Pass through non-delta events unchanged
                   controller.enqueue(encoder.encode(`data: ${data}\n`));
                 }
