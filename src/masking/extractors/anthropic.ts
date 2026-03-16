@@ -18,6 +18,7 @@ import type {
   TextBlock,
   ThinkingBlock,
   ToolResultBlock,
+  ToolUseBlock,
 } from "../../providers/anthropic/types";
 import type { MaskedSpan, RequestExtractor, TextSpan } from "../types";
 
@@ -292,6 +293,11 @@ export const anthropicExtractor: RequestExtractor<AnthropicRequest, AnthropicRes
       content: response.content.map((block) => {
         if (block.type === "text") {
           return { ...block, text: unmaskText((block as TextBlock).text) };
+        }
+        if (block.type === "tool_use") {
+          const toolUse = block as ToolUseBlock;
+          const inputStr = JSON.stringify(toolUse.input);
+          return { ...toolUse, input: JSON.parse(unmaskText(inputStr)) };
         }
         return block;
       }),

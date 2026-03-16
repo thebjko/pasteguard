@@ -89,45 +89,82 @@ export function createAnthropicUnmaskingStream(
               try {
                 const parsed = JSON.parse(data) as { type: string; delta?: { type: string } };
 
-                // Only process text deltas
-                if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-                  const event = parsed as ContentBlockDeltaEvent;
-                  const textDelta = event.delta as TextDelta;
-                  let processedText = textDelta.text;
+                if (parsed.type === "content_block_delta") {
+                  // Process text deltas (response text)
+                  if (parsed.delta?.type === "text_delta") {
+                    const event = parsed as ContentBlockDeltaEvent;
+                    const textDelta = event.delta as TextDelta;
+                    let processedText = textDelta.text;
 
-                  // Unmask PII
-                  if (piiContext && processedText) {
-                    const { output, remainingBuffer } = unmaskStreamChunk(
-                      piiBuffer,
-                      processedText,
-                      piiContext,
-                      config,
-                    );
-                    piiBuffer = remainingBuffer;
-                    processedText = output;
-                  }
+                    // Unmask PII
+                    if (piiContext && processedText) {
+                      const { output, remainingBuffer } = unmaskStreamChunk(
+                        piiBuffer,
+                        processedText,
+                        piiContext,
+                        config,
+                      );
+                      piiBuffer = remainingBuffer;
+                      processedText = output;
+                    }
 
-                  // Unmask secrets
-                  if (secretsContext && processedText) {
-                    const { output, remainingBuffer } = unmaskSecretsStreamChunk(
-                      secretsBuffer,
-                      processedText,
-                      secretsContext,
-                    );
-                    secretsBuffer = remainingBuffer;
-                    processedText = output;
-                  }
+                    // Unmask secrets
+                    if (secretsContext && processedText) {
+                      const { output, remainingBuffer } = unmaskSecretsStreamChunk(
+                        secretsBuffer,
+                        processedText,
+                        secretsContext,
+                      );
+                      secretsBuffer = remainingBuffer;
+                      processedText = output;
+                    }
 
-                  // Only emit if we have content
-                  if (processedText) {
+                    // Only emit if we have content
+                    if (processedText) {
+                      const modifiedEvent = {
+                        ...parsed,
+                        delta: { ...textDelta, text: processedText },
+                      };
+                      controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify(modifiedEvent)}\n`),
+                      );
+                    }
+                  } else if (parsed.delta?.type === "input_json_delta") {
+                    // Process tool input deltas — unmask placeholders in JSON fragments
+                    const delta = parsed.delta as { type: string; partial_json: string };
+                    let partialJson = delta.partial_json;
+
+                    if (secretsContext && partialJson) {
+                      const { output, remainingBuffer } = unmaskSecretsStreamChunk(
+                        secretsBuffer,
+                        partialJson,
+                        secretsContext,
+                      );
+                      secretsBuffer = remainingBuffer;
+                      partialJson = output;
+                    }
+                    if (piiContext && partialJson) {
+                      const { output, remainingBuffer } = unmaskStreamChunk(
+                        piiBuffer,
+                        partialJson,
+                        piiContext,
+                        config,
+                      );
+                      piiBuffer = remainingBuffer;
+                      partialJson = output;
+                    }
+
                     const modifiedEvent = {
                       ...parsed,
-                      delta: { ...textDelta, text: processedText },
+                      delta: { ...delta, partial_json: partialJson },
                     };
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(modifiedEvent)}\n`));
+                  } else {
+                    // Pass through other delta types unchanged
+                    controller.enqueue(encoder.encode(`data: ${data}\n`));
                   }
                 } else {
-                  // Pass through other events unchanged
+                  // Pass through non-delta events unchanged
                   controller.enqueue(encoder.encode(`data: ${data}\n`));
                 }
               } catch {
