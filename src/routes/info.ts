@@ -10,8 +10,9 @@ export const infoRoutes = new Hono();
 
 infoRoutes.get("/info", (c) => {
   const config = getConfig();
-  const detector = getPIIDetector();
-  const languageValidation = detector.getLanguageValidation();
+  const languageValidation = config.pii_detection.enabled
+    ? getPIIDetector().getLanguageValidation()
+    : undefined;
 
   const providers = {
     openai: {

@@ -11,7 +11,8 @@ export type SecretEntityType =
   | "BEARER_TOKEN"
   | "ENV_PASSWORD"
   | "ENV_SECRET"
-  | "CONNECTION_STRING";
+  | "CONNECTION_STRING"
+  | "KOREAN_RRN";
 
 export interface SecretsMatch {
   type: SecretEntityType;

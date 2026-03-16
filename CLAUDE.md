@@ -1,121 +1,78 @@
-# PasteGuard
+# CLAUDE.md
 
-Privacy proxy for LLMs. Masks personal data and secrets before sending prompts to your provider (OpenAI, Anthropic, etc.).
-
-## Tech Stack
-
-- Runtime: Bun
-- Framework: Hono (with JSX for dashboard)
-- Validation: Zod
-- Styling: Tailwind CSS v4
-- Database: SQLite (`data/pasteguard.db`)
-- PII Detection: Microsoft Presidio (Docker)
-- Code Style: Biome (see @biome.json)
-
-## Architecture
-
-```
-src/
-├── index.ts                 # Hono server entry
-├── config.ts                # YAML config + Zod validation
-├── constants/               # Shared constants
-│   ├── languages.ts         # Supported languages
-│   └── timeouts.ts          # HTTP timeout values
-├── routes/
-│   ├── openai.ts            # /openai/v1/* (chat completions + wildcard proxy)
-│   ├── anthropic.ts         # /anthropic/v1/* (messages + wildcard proxy)
-│   ├── dashboard.tsx        # Dashboard routes + API
-│   ├── health.ts            # GET /health
-│   ├── info.ts              # GET /info
-│   └── utils.ts             # Shared route utilities
-├── providers/
-│   ├── errors.ts            # Shared provider errors
-│   ├── local.ts             # Local LLM client (Ollama/OpenAI-compatible)
-│   ├── openai/
-│   │   ├── client.ts        # OpenAI API client
-│   │   ├── stream-transformer.ts  # SSE unmasking for streaming
-│   │   └── types.ts         # OpenAI request/response types
-│   └── anthropic/
-│       ├── client.ts        # Anthropic API client
-│       ├── stream-transformer.ts  # SSE unmasking for streaming
-│       └── types.ts         # Anthropic request/response types
-├── masking/
-│   ├── service.ts           # Masking orchestration
-│   ├── context.ts           # Masking context management
-│   ├── placeholders.ts      # Placeholder generation
-│   ├── conflict-resolver.ts # Overlapping entity resolution
-│   ├── types.ts             # Shared masking types
-│   └── extractors/
-│       ├── openai.ts        # OpenAI text extraction/insertion
-│       └── anthropic.ts     # Anthropic text extraction/insertion
-├── pii/
-│   ├── detect.ts            # Presidio client
-│   └── mask.ts              # PII masking logic
-├── secrets/
-│   ├── detect.ts            # Secret detection
-│   ├── mask.ts              # Secret masking
-│   └── patterns/            # Secret pattern definitions
-├── services/
-│   ├── pii.ts               # PII detection service
-│   ├── secrets.ts           # Secrets processing service
-│   ├── language-detector.ts # Auto language detection
-│   └── logger.ts            # SQLite logging
-├── utils/
-│   └── content.ts           # Content utilities
-└── views/
-    └── dashboard/
-        └── page.tsx         # Dashboard UI
-```
-
-Tests are colocated (`*.test.ts`).
-
-## Modes
-
-Two modes configured in `config.yaml`:
-
-- **Route**: Routes PII-containing requests to local LLM (requires `local` provider config)
-- **Mask**: Masks PII before sending to configured provider, unmasks response (no local provider needed)
-
-See @config.example.yaml for full configuration.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
 
-- `bun run dev` - Development (hot reload)
-- `bun run start` - Production
-- `bun run build` - Build to dist/
-- `bun test` - Run tests
-- `bun run typecheck` - Type check
-- `bun run lint` - Lint only
-- `bun run check` - Lint + format check
-- `bun run format` - Format code
-
-## Setup
-
-**Production:**
 ```bash
-cp config.example.yaml config.yaml
-docker compose up -d
+bun run dev          # Hot-reload dev server
+bun test             # Run all tests
+bun test src/path/to/file.test.ts  # Run single test file
+bun run typecheck    # TypeScript type check
+bun run check        # Lint + format check (Biome)
+bun run format       # Auto-format code
+bun run build        # Build to dist/
 ```
 
-**Development:** Presidio in Docker, Bun locally with hot-reload:
+**Dev setup requires Presidio running:**
 ```bash
 docker compose up presidio -d
+cp config.example.yaml config.yaml
+bun install
 bun run dev
 ```
 
-**Multi-language:** Use EU image or build custom:
-```bash
-PASTEGUARD_TAG=eu docker compose up -d
-LANGUAGES=en,de,ja docker compose up -d --build
+## Architecture
+
+PasteGuard is a **privacy proxy for LLMs** — it sits between clients and AI providers (OpenAI, Anthropic), detects PII and secrets in prompts, masks them with placeholders like `[[PERSON_1]]`, forwards the sanitized request, then unmasks the response before returning it to the client.
+
+**Two modes** (set in `config.yaml`):
+- `mask` — mask/unmask in-flight for any provider
+- `route` — send sensitive requests to a local LLM, clean requests to cloud
+
+### Request Flow (mask mode)
+
+```
+Client → routes/ → masking/service.ts → pii/ + secrets/ → provider/ → unmask → Client
 ```
 
-See @docker/presidio/languages.yaml for 24 available languages.
+1. `src/routes/openai.ts` or `src/routes/anthropic.ts` receives the request
+2. `src/masking/service.ts` orchestrates detection + masking
+3. `src/pii/detect.ts` calls Presidio (external Docker service) for PII
+4. `src/secrets/detect.ts` runs regex patterns from `src/secrets/patterns/`
+5. `src/masking/conflict-resolver.ts` handles overlapping detection spans
+6. `src/masking/context.ts` stores the placeholder↔original mapping
+7. `src/providers/openai/` or `src/providers/anthropic/` forwards to the real API (supports streaming)
+8. Stream transformers in `src/providers/*/stream-transformer.ts` unmask chunks as they arrive
 
-## Testing
+### Key Modules
 
-- `GET /health` - Health check
-- `GET /info` - Mode info
-- `POST /openai/v1/chat/completions` - OpenAI endpoint
-- `POST /anthropic/v1/messages` - Anthropic endpoint
+| Path | Responsibility |
+|------|---------------|
+| `src/config.ts` | YAML config loading with `${ENV:-default}` substitution, Zod validation, singleton |
+| `src/masking/context.ts` | In-memory map of placeholders → original values per request |
+| `src/masking/conflict-resolver.ts` | Merges overlapping PII/secret spans before masking |
+| `src/pii/` | Presidio integration — sends text, receives entity spans |
+| `src/secrets/patterns/` | Regex definitions for API keys, SSH keys, JWTs, etc. |
+| `src/providers/` | OpenAI + Anthropic clients; streaming response unmask transformers |
+| `src/services/logger.ts` | SQLite logging of requests (optional, configurable) |
+| `src/routes/dashboard.tsx` | React/Hono JSX dashboard UI at `/dashboard` |
 
-Response header `X-PasteGuard-PII-Masked: true` indicates PII was masked.
+### Configuration
+
+`config.yaml` (gitignored, copy from `config.example.yaml`). Key sections:
+- `mode`: `mask` | `route`
+- `pii_detection.presidio_url`: must point to running Presidio service
+- `pii_detection.languages`: array of 2-letter codes (24 supported)
+- `secrets_detection.action`: `block` | `mask` | `route_local`
+- `masking.show_markers`: whether placeholders are visible in responses
+
+### Tech Stack
+
+- **Runtime:** Bun + TypeScript (strict mode)
+- **HTTP:** Hono
+- **Validation:** Zod
+- **PII engine:** Microsoft Presidio (external Docker service)
+- **DB:** SQLite (via Bun built-in)
+- **Lint/format:** Biome (100-char line width, double quotes)
+- **UI:** Hono JSX + Tailwind CSS v4

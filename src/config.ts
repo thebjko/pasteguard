@@ -51,7 +51,7 @@ const LanguagesSchema = z
 
 const PIIDetectionSchema = z.object({
   enabled: z.boolean().default(true),
-  presidio_url: z.string().url(),
+  presidio_url: z.string().url().optional(),
   languages: LanguagesSchema,
   fallback_language: LanguageEnum.default("en"),
   score_threshold: z.coerce.number().min(0).max(1).default(0.7),
@@ -104,6 +104,7 @@ const SecretEntityTypes = [
   "ENV_PASSWORD",
   "ENV_SECRET",
   "CONNECTION_STRING",
+  "KOREAN_RRN",
 ] as const;
 
 const SecretsDetectionSchema = z.object({

@@ -107,45 +107,51 @@ async function validateStartup() {
     process.exit(1);
   }
 
-  const detector = getPIIDetector();
+  if (config.pii_detection.enabled) {
+    const detector = getPIIDetector();
 
-  // Wait for Presidio to be ready (multi-language setups need longer to load spaCy models)
-  const startupTimeout = Number(process.env.PASTEGUARD_STARTUP_TIMEOUT) || 180;
-  console.log("[STARTUP] Connecting to Presidio...");
-  const ready = await detector.waitForReady(startupTimeout, 1000);
+    // Wait for Presidio to be ready (multi-language setups need longer to load spaCy models)
+    const startupTimeout = Number(process.env.PASTEGUARD_STARTUP_TIMEOUT) || 180;
+    console.log("[STARTUP] Connecting to Presidio...");
+    const ready = await detector.waitForReady(startupTimeout, 1000);
 
-  if (!ready) {
-    console.error(
-      `[STARTUP] ✗ Could not connect to Presidio at ${config.pii_detection.presidio_url}`,
-    );
-    console.error(
-      "          Make sure Presidio is running: docker compose up presidio-analyzer -d",
-    );
-    process.exit(1);
-  }
+    if (!ready) {
+      console.error(
+        `[STARTUP] ✗ Could not connect to Presidio at ${config.pii_detection.presidio_url}`,
+      );
+      console.error(
+        "          Make sure Presidio is running: docker compose up presidio-analyzer -d",
+      );
+      process.exit(1);
+    }
 
-  console.log("[STARTUP] ✓ Presidio connected");
+    console.log("[STARTUP] ✓ Presidio connected");
 
-  // Validate configured languages
-  console.log(`[STARTUP] Validating languages: ${config.pii_detection.languages.join(", ")}`);
-  const validation = await detector.validateLanguages(config.pii_detection.languages);
+    // Validate configured languages
+    console.log(`[STARTUP] Validating languages: ${config.pii_detection.languages.join(", ")}`);
+    const validation = await detector.validateLanguages(config.pii_detection.languages);
 
-  if (validation.missing.length > 0) {
-    console.error("\n❌ Language mismatch detected!\n");
-    console.error(`   Configured: ${config.pii_detection.languages.join(", ")}`);
-    console.error(
-      `   Available:  ${validation.available.length > 0 ? validation.available.join(", ") : "(none)"}`,
-    );
-    console.error(`   Missing:    ${validation.missing.join(", ")}\n`);
-    console.error("   To fix, either:");
-    console.error(
-      `   1. Rebuild: LANGUAGES=${config.pii_detection.languages.join(",")} docker compose build presidio-analyzer`,
-    );
-    console.error(`   2. Update config.yaml languages to: [${validation.available.join(", ")}]\n`);
-    console.error("[STARTUP] ✗ Language configuration mismatch. Exiting for safety.");
-    process.exit(1);
+    if (validation.missing.length > 0) {
+      console.error("\n❌ Language mismatch detected!\n");
+      console.error(`   Configured: ${config.pii_detection.languages.join(", ")}`);
+      console.error(
+        `   Available:  ${validation.available.length > 0 ? validation.available.join(", ") : "(none)"}`,
+      );
+      console.error(`   Missing:    ${validation.missing.join(", ")}\n`);
+      console.error("   To fix, either:");
+      console.error(
+        `   1. Rebuild: LANGUAGES=${config.pii_detection.languages.join(",")} docker compose build presidio-analyzer`,
+      );
+      console.error(
+        `   2. Update config.yaml languages to: [${validation.available.join(", ")}]\n`,
+      );
+      console.error("[STARTUP] ✗ Language configuration mismatch. Exiting for safety.");
+      process.exit(1);
+    } else {
+      console.log("[STARTUP] ✓ All configured languages available");
+    }
   } else {
-    console.log("[STARTUP] ✓ All configured languages available");
+    console.log("[STARTUP] ✓ PII detection disabled, skipping Presidio");
   }
 }
 
