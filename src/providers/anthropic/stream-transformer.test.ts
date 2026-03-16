@@ -332,6 +332,50 @@ describe("createAnthropicUnmaskingStream", () => {
     expect(result).toContain("Plain text without placeholders");
   });
 
+  test("flushes buffer on content_block_stop to prevent cross-block contamination", async () => {
+    // Bug scenario: placeholder split across content_block_stop boundary
+    // text_delta "...[[KOREAN_" → content_block_stop → input_json_delta "PHONE_1]]..."
+    // Without the fix, "[[KOREAN_" would remain in piiBuffer and corrupt the tool input
+    const piiContext = createMaskingContext();
+    piiContext.mapping["[[KOREAN_PHONE_1]]"] = "010-2345-6543";
+
+    const secretsContext = createMaskingContext();
+
+    const textBlockDelta = createAnthropicEvent("content_block_delta", {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: "Call me at [[KOREAN_" },
+    });
+    const contentBlockStop = createAnthropicEvent("content_block_stop", {
+      type: "content_block_stop",
+      index: 0,
+    });
+    const toolInputDelta = createAnthropicEvent("content_block_delta", {
+      type: "content_block_delta",
+      index: 1,
+      delta: { type: "input_json_delta", partial_json: 'PHONE_1]]","other":"val"}' },
+    });
+
+    const source = createSSEStream([textBlockDelta, contentBlockStop, toolInputDelta]);
+    const unmaskedStream = createAnthropicUnmaskingStream(
+      source,
+      piiContext,
+      defaultConfig,
+      secretsContext,
+    );
+    const result = await consumeStream(unmaskedStream);
+
+    // Buffer should be flushed at content_block_stop.
+    // The partial placeholder "[[KOREAN_" is emitted as-is (can't unmask incomplete placeholder).
+    expect(result).toContain('"[[KOREAN_"');
+    // Tool input (input_json_delta) should NOT contain the leftover buffer fragment.
+    // Without the fix, "[[KOREAN_" + "PHONE_1]]" would reassemble and unmask in the tool input.
+    const lines = result.split("\n");
+    const toolInputLine = lines.find((l) => l.includes("input_json_delta"));
+    expect(toolInputLine).toBeDefined();
+    expect(toolInputLine).not.toContain("[[KOREAN_");
+  });
+
   test("handles multiple consecutive text deltas", async () => {
     const context = createMaskingContext();
     context.mapping["[[PERSON_1]]"] = "Jane";

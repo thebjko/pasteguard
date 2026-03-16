@@ -164,6 +164,33 @@ export function createAnthropicUnmaskingStream(
                     controller.enqueue(encoder.encode(`data: ${data}\n`));
                   }
                 } else {
+                  // On content_block_stop, flush and reset buffers to prevent
+                  // cross-block contamination (e.g. text_delta buffer leaking into input_json_delta)
+                  if (parsed.type === "content_block_stop") {
+                    let flushed = "";
+                    if (piiBuffer) {
+                      flushed += piiContext
+                        ? flushMaskingBuffer(piiBuffer, piiContext, config)
+                        : piiBuffer;
+                      piiBuffer = "";
+                    }
+                    if (secretsBuffer) {
+                      flushed += secretsContext
+                        ? flushSecretsMaskingBuffer(secretsBuffer, secretsContext)
+                        : secretsBuffer;
+                      secretsBuffer = "";
+                    }
+                    if (flushed) {
+                      const flushEvent = {
+                        type: "content_block_delta",
+                        index: (parsed as { index?: number }).index ?? 0,
+                        delta: { type: "text_delta", text: flushed },
+                      };
+                      controller.enqueue(
+                        encoder.encode(`data: ${JSON.stringify(flushEvent)}\n`),
+                      );
+                    }
+                  }
                   // Pass through non-delta events unchanged
                   controller.enqueue(encoder.encode(`data: ${data}\n`));
                 }
