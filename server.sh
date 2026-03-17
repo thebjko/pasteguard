@@ -10,7 +10,7 @@ start() {
     exit 1
   fi
 
-  bun run dev >> "$LOG_FILE" 2>&1 &
+  nohup bun run dev >> "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
   echo "서버 시작 (PID: $(cat "$PID_FILE"), 로그: $LOG_FILE)"
 
