@@ -372,6 +372,34 @@ describe("createAnthropicUnmaskingStream", () => {
     expect(toolInputLine).not.toContain("010-2345-6543");
   });
 
+  test("does not emit orphaned event line when text delta is fully buffered", async () => {
+    // Bug: when entire text chunk is absorbed into buffer (e.g. starts a placeholder),
+    // "event: content_block_delta\n\n" was emitted without a data line,
+    // causing claude CLI to log "Could not parse message into JSON: From chunk: [ "event: ..." ]"
+    const context = createMaskingContext();
+    context.mapping["[[KOREAN_PHONE_1]]"] = "010-3523-2323";
+
+    // First chunk: only the start of a placeholder — entirely buffered, nothing to emit
+    // Second chunk: rest of placeholder — now we can emit both together
+    const chunks = [createTextDelta("[[KOREAN_"), createTextDelta("PHONE_1]]")];
+    const source = createSSEStream(chunks);
+
+    const unmaskedStream = createAnthropicUnmaskingStream(source, context, defaultConfig);
+    const result = await consumeStream(unmaskedStream);
+
+    // Verify no orphaned event line: every "event:" must be followed by "data:" before next blank line
+    const lines = result.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith("event: ")) {
+        const nextNonEmpty = lines.slice(i + 1).find((l) => l.trim() !== "");
+        expect(nextNonEmpty).toMatch(/^data: /);
+      }
+    }
+
+    // Unmasked value should appear in output
+    expect(result).toContain("010-3523-2323");
+  });
+
   test("handles multiple consecutive text deltas", async () => {
     const context = createMaskingContext();
     context.mapping["[[PERSON_1]]"] = "Jane";

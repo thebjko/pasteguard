@@ -31,6 +31,7 @@ export function createAnthropicUnmaskingStream(
   let jsonPiiBuffer = "";
   let jsonSecretsBuffer = "";
   let lineBuffer = "";
+  let pendingEventLine = "";
 
   return new ReadableStream({
     async start(controller) {
@@ -79,9 +80,9 @@ export function createAnthropicUnmaskingStream(
           lineBuffer = lines.pop() || "";
 
           for (const line of lines) {
-            // Pass through event type lines
+            // Buffer event type lines — emit together with their data line
             if (line.startsWith("event: ")) {
-              controller.enqueue(encoder.encode(`${line}\n`));
+              pendingEventLine = `${line}\n`;
               continue;
             }
 
@@ -122,8 +123,9 @@ export function createAnthropicUnmaskingStream(
                       processedText = output;
                     }
 
-                    // Only emit if we have content
+                    // Only emit if we have content; if not, discard pending event line too
                     if (processedText) {
+                      if (pendingEventLine) controller.enqueue(encoder.encode(pendingEventLine));
                       const modifiedEvent = {
                         ...parsed,
                         delta: { ...textDelta, text: processedText },
@@ -132,6 +134,7 @@ export function createAnthropicUnmaskingStream(
                         encoder.encode(`data: ${JSON.stringify(modifiedEvent)}\n`),
                       );
                     }
+                    pendingEventLine = "";
                   } else if (parsed.delta?.type === "input_json_delta") {
                     // Process tool input deltas — unmask placeholders in JSON fragments
                     const delta = parsed.delta as { type: string; partial_json: string };
@@ -161,18 +164,26 @@ export function createAnthropicUnmaskingStream(
                       ...parsed,
                       delta: { ...delta, partial_json: partialJson },
                     };
+                    if (pendingEventLine) controller.enqueue(encoder.encode(pendingEventLine));
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(modifiedEvent)}\n`));
+                    pendingEventLine = "";
                   } else {
                     // Pass through other delta types unchanged
+                    if (pendingEventLine) controller.enqueue(encoder.encode(pendingEventLine));
                     controller.enqueue(encoder.encode(`data: ${data}\n`));
+                    pendingEventLine = "";
                   }
                 } else {
                   // Pass through non-delta events unchanged
+                  if (pendingEventLine) controller.enqueue(encoder.encode(pendingEventLine));
                   controller.enqueue(encoder.encode(`data: ${data}\n`));
+                  pendingEventLine = "";
                 }
               } catch {
                 // Pass through unparseable data
+                if (pendingEventLine) controller.enqueue(encoder.encode(pendingEventLine));
                 controller.enqueue(encoder.encode(`${line}\n`));
+                pendingEventLine = "";
               }
               continue;
             }
